@@ -215,22 +215,38 @@ details summary {
 }
 
 .toast {
-    min-width: 240px;
-    max-width: 360px;
-    padding: 14px 16px;
-    border-radius: 14px;
-    border: 1px solid var(--border);
-    background: var(--panel);
+    min-width: 320px;
+    max-width: 420px;
+    padding: 18px 20px;
+    border-radius: 16px;
+    border: 1px solid rgba(249, 115, 22, 0.35);
+    background: linear-gradient(135deg, rgba(255, 237, 213, 0.98), rgba(255, 247, 237, 0.98));
+    color: #9a3412;
     box-shadow: var(--shadow);
     transition: opacity 0.24s ease, transform 0.24s ease;
+    font-size: 1rem;
+    font-weight: 600;
 }
 
 .toast.success {
-    border-color: rgba(34, 197, 94, 0.35);
+    border-color: rgba(249, 115, 22, 0.35);
 }
 
 .toast.error {
-    border-color: rgba(249, 115, 22, 0.45);
+    border-color: rgba(194, 65, 12, 0.45);
+    background: linear-gradient(135deg, rgba(255, 224, 204, 0.98), rgba(255, 241, 242, 0.98));
+    color: #7c2d12;
+}
+
+:root[data-theme="dark"] .toast {
+    background: linear-gradient(135deg, rgba(124, 45, 18, 0.96), rgba(154, 52, 18, 0.96));
+    color: #ffedd5;
+    border-color: rgba(251, 146, 60, 0.5);
+}
+
+:root[data-theme="dark"] .toast.error {
+    background: linear-gradient(135deg, rgba(127, 29, 29, 0.96), rgba(154, 52, 18, 0.96));
+    color: #fff7ed;
 }
 
 .toast.fade-out {
