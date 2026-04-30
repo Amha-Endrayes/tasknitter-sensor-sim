@@ -176,6 +176,7 @@ class AppState:
                 "org_id": DEFAULT_ORG_ID,
                 "mqtt_host": DEFAULT_MQTT_HOST,
                 "publish_interval_seconds": DEFAULT_INTERVAL_SECONDS,
+                "theme": "light",
             },
             "devices": [],
             "last_publish": None,
@@ -202,11 +203,12 @@ class AppState:
         with self._lock:
             return json.loads(json.dumps(self.state))
 
-    def update_settings(self, org_id: str, mqtt_host: str, interval_seconds: int) -> dict[str, Any]:
+    def update_settings(self, org_id: str, mqtt_host: str, interval_seconds: int, theme: str) -> dict[str, Any]:
         with self._lock:
             self.state["settings"]["org_id"] = org_id.strip() or DEFAULT_ORG_ID
             self.state["settings"]["mqtt_host"] = mqtt_host.strip() or DEFAULT_MQTT_HOST
             self.state["settings"]["publish_interval_seconds"] = max(1, interval_seconds)
+            self.state["settings"]["theme"] = theme if theme in {"light", "dark"} else "light"
             self.publisher.set_host(self.state["settings"]["mqtt_host"])
             self.save()
             return self.snapshot()
@@ -365,6 +367,7 @@ def update_settings():
         org_id=payload.get("org_id", DEFAULT_ORG_ID),
         mqtt_host=payload.get("mqtt_host", DEFAULT_MQTT_HOST),
         interval_seconds=int(payload.get("publish_interval_seconds", DEFAULT_INTERVAL_SECONDS)),
+        theme=payload.get("theme", "light"),
     )
     return jsonify(snapshot)
 

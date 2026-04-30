@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -82,6 +82,13 @@
                         <span>Publish Interval (seconds)</span>
                         <input type="number" name="publish_interval_seconds" min="1" required>
                     </label>
+                    <label>
+                        <span>Theme</span>
+                        <select name="theme" required>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                        </select>
+                    </label>
                     <button type="submit">Save Settings</button>
                 </form>
             </details>
@@ -150,6 +157,7 @@
 
         function renderState(state, options = {}) {
             latestState = state;
+            document.documentElement.dataset.theme = state.settings.theme || "light";
             document.getElementById("orgIdLabel").textContent = state.settings.org_id;
             document.getElementById("mqttHostLabel").textContent = state.settings.mqtt_host;
             document.getElementById("intervalLabel").textContent = `${state.settings.publish_interval_seconds}s`;
@@ -159,6 +167,7 @@
                 settingsForm.org_id.value = state.settings.org_id;
                 settingsForm.mqtt_host.value = state.settings.mqtt_host;
                 settingsForm.publish_interval_seconds.value = state.settings.publish_interval_seconds;
+                settingsForm.theme.value = state.settings.theme || "light";
             }
 
             syncDeviceSelect(state.devices);
@@ -262,6 +271,7 @@
                 org_id: form.org_id.value,
                 mqtt_host: form.mqtt_host.value,
                 publish_interval_seconds: Number(form.publish_interval_seconds.value),
+                theme: form.theme.value,
             });
             await refreshState();
             showToast("Settings saved");
