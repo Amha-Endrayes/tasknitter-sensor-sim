@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Sensor Simulator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="shell">
+        <section class="hero card">
+            <div>
+                <p class="eyebrow">Flask + MQTT</p>
+                <h1>Sensor Simulation Platform</h1>
+                <p class="muted">Create devices, attach sensor tags, and publish simulated MQTT readings.</p>
+            </div>
+            <div class="status-panel">
+                <div>
+                    <span class="status-label">Organisation ID</span>
+                    <strong id="orgIdLabel">-</strong>
+                </div>
+                <div>
+                    <span class="status-label">MQTT Host</span>
+                    <strong id="mqttHostLabel">-</strong>
+                </div>
+                <div>
+                    <span class="status-label">Publish Interval</span>
+                    <strong id="intervalLabel">-</strong>
+                </div>
+            </div>
+        </section>
+
+        <section class="grid">
+            <section class="card">
+                <h2>Create Device</h2>
+                <form id="deviceForm" class="stack">
+                    <label>
+                        <span>Device Display Name</span>
+                        <input type="text" name="device_display_name" placeholder="Boiler Pump 1" required>
+                    </label>
+                    <button type="submit">Create Device</button>
+                </form>
+            </section>
+
+            <section class="card">
+                <h2>Create Sensor Tag</h2>
+                <form id="tagForm" class="stack">
+                    <label>
+                        <span>Device</span>
+                        <select name="device_name" id="deviceSelect" required></select>
+                    </label>
+                    <label>
+                        <span>Sensor Display Name</span>
+                        <input type="text" name="sensor_display_name" placeholder="Vibration Sensor 1" required>
+                    </label>
+                    <label>
+                        <span>Sensor Type</span>
+                        <select name="sensor_type" required>
+                            {% for sensor_type, config in sensor_profiles.items() %}
+                            <option value="{{ sensor_type }}">{{ config.label }} ({{ config.unit }})</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <button type="submit">Create Sensor</button>
+                </form>
+            </section>
+        </section>
+
+        <section class="card">
+            <details>
+                <summary>Advanced Settings</summary>
+                <form id="settingsForm" class="settings-grid">
+                    <label>
+                        <span>Organisation ID</span>
+                        <input type="text" name="org_id" required>
+                    </label>
+                    <label>
+                        <span>MQTT Host</span>
+                        <input type="text" name="mqtt_host" required>
+                    </label>
+                    <label>
+                        <span>Publish Interval (seconds)</span>
+                        <input type="number" name="publish_interval_seconds" min="1" required>
+                    </label>
+                    <button type="submit">Save Settings</button>
+                </form>
+            </details>
+        </section>
+
+        <section class="card">
+            <div class="section-head">
+                <h2>Devices & Sensors</h2>
+                <button id="refreshButton" class="secondary" type="button">Refresh</button>
+            </div>
+            <div id="devicesView" class="device-list"></div>
+        </section>
+
+        <section class="card">
+            <h2>Last MQTT Publish</h2>
+            <pre id="lastPublish">No events yet.</pre>
+        </section>
+    </main>
+
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script>
+        const stateUrl = "/api/state";
+        const deviceUrl = "/api/devices";
+        const tagUrl = "/api/tags";
+        const settingsUrl = "/api/settings";
+        let latestState = null;
+        let refreshTimer = null;
+
+        async function fetchState() {
+            const response = await fetch(stateUrl);
+            return response.json();
+        }
+
+        function formatTimestamp(timestamp) {
+            if (!timestamp) return "-";
+            return new Date(timestamp).toLocaleString();
+        }
+
+        function showToast(message, tone = "success") {
+            const container = document.getElementById("toastContainer");
+            const toast = document.createElement("div");
+            toast.className = `toast ${tone}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            window.setTimeout(() => {
+                toast.classList.add("fade-out");
+                window.setTimeout(() => toast.remove(), 240);
+            }, 3200);
+        }
+
+        function syncDeviceSelect(devices) {
+            const select = document.getElementById("deviceSelect");
+            const currentValue = select.value;
+            select.innerHTML = "";
+            for (const device of devices) {
+                const option = document.createElement("option");
+                option.value = device.device_name;
+                option.textContent = `${device.device_display_name} (${device.device_name})`;
+                select.appendChild(option);
+            }
+            if (devices.some(device => device.device_name === currentValue)) {
+                select.value = currentValue;
+            }
+        }
+
+        function renderState(state, options = {}) {
+            latestState = state;
+            document.getElementById("orgIdLabel").textContent = state.settings.org_id;
+            document.getElementById("mqttHostLabel").textContent = state.settings.mqtt_host;
+            document.getElementById("intervalLabel").textContent = `${state.settings.publish_interval_seconds}s`;
+
+            if (!options.preserveForms) {
+                const settingsForm = document.getElementById("settingsForm");
+                settingsForm.org_id.value = state.settings.org_id;
+                settingsForm.mqtt_host.value = state.settings.mqtt_host;
+                settingsForm.publish_interval_seconds.value = state.settings.publish_interval_seconds;
+            }
+
+            syncDeviceSelect(state.devices);
+
+            const devicesView = document.getElementById("devicesView");
+            if (!state.devices.length) {
+                devicesView.innerHTML = `<div class="empty">No devices created yet.</div>`;
+            } else {
+                devicesView.innerHTML = state.devices.map(device => `
+                    <article class="device-card">
+                        <div class="device-header">
+                            <div>
+                                <h3>${device.device_display_name}</h3>
+                                <p>${device.device_name}</p>
+                            </div>
+                            <span>${device.tags.length} sensor(s)</span>
+                        </div>
+                        <div class="tag-list">
+                            ${device.tags.length ? device.tags.map(tag => `
+                                <div class="tag-card">
+                                    <div>
+                                        <strong>${tag.sensor_display_name}</strong>
+                                        <p>${tag.sensor_type_label} · ${tag.tag_id}</p>
+                                    </div>
+                                    <div class="value-box">
+                                        <span>${tag.current_value} ${tag.unit}</span>
+                                        <small>${formatTimestamp(tag.last_published_at)}</small>
+                                    </div>
+                                </div>
+                            `).join("") : `<div class="empty">No sensors on this device yet.</div>`}
+                        </div>
+                    </article>
+                `).join("");
+            }
+
+            const lastPublish = document.getElementById("lastPublish");
+            lastPublish.textContent = state.last_publish ? JSON.stringify(state.last_publish, null, 2) : "No events yet.";
+        }
+
+        async function refreshState(options = {}) {
+            const state = await fetchState();
+            renderState(state, options);
+        }
+
+        function shouldPreserveForms() {
+            const active = document.activeElement;
+            return Boolean(active && ["INPUT", "SELECT", "TEXTAREA"].includes(active.tagName));
+        }
+
+        async function pollState() {
+            try {
+                await refreshState({ preserveForms: shouldPreserveForms() });
+            } catch (error) {
+                showToast(error.message || "State refresh failed", "error");
+            } finally {
+                refreshTimer = window.setTimeout(pollState, 5000);
+            }
+        }
+
+        async function postJson(url, payload) {
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            const body = await response.json();
+            if (!response.ok) {
+                throw new Error(body.error || "Request failed");
+            }
+            return body;
+        }
+
+        document.getElementById("deviceForm").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            const result = await postJson(deviceUrl, { device_display_name: form.device_display_name.value });
+            form.reset();
+            await refreshState();
+            showToast(`Device created: ${result.device.device_display_name}`);
+        });
+
+        document.getElementById("tagForm").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            const result = await postJson(tagUrl, {
+                device_name: form.device_name.value,
+                sensor_display_name: form.sensor_display_name.value,
+                sensor_type: form.sensor_type.value,
+            });
+            const selectedDevice = form.device_name.value;
+            form.reset();
+            await refreshState();
+            document.getElementById("deviceSelect").value = selectedDevice;
+            showToast(`Sensor created: ${result.tag.sensor_display_name}`);
+        });
+
+        document.getElementById("settingsForm").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            await postJson(settingsUrl, {
+                org_id: form.org_id.value,
+                mqtt_host: form.mqtt_host.value,
+                publish_interval_seconds: Number(form.publish_interval_seconds.value),
+            });
+            await refreshState();
+            showToast("Settings saved");
+        });
+
+        document.getElementById("refreshButton").addEventListener("click", async () => {
+            await refreshState({ preserveForms: shouldPreserveForms() });
+            showToast("State refreshed");
+        });
+
+        refreshState();
+        pollState();
+    </script>
+</body>
+</html>

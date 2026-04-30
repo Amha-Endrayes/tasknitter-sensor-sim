@@ -1,0 +1,242 @@
+:root {
+    color-scheme: dark;
+    --bg: #0b1020;
+    --panel: rgba(17, 24, 39, 0.88);
+    --panel-soft: rgba(30, 41, 59, 0.64);
+    --border: rgba(148, 163, 184, 0.18);
+    --text: #e5edf7;
+    --muted: #94a3b8;
+    --accent: #22c55e;
+    --accent-soft: rgba(34, 197, 94, 0.15);
+    --danger: #f97316;
+    --shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: Inter, Segoe UI, Arial, sans-serif;
+    background:
+        radial-gradient(circle at top left, rgba(34, 197, 94, 0.12), transparent 24%),
+        radial-gradient(circle at top right, rgba(59, 130, 246, 0.14), transparent 18%),
+        var(--bg);
+    color: var(--text);
+}
+
+.shell {
+    width: min(1180px, calc(100% - 32px));
+    margin: 32px auto;
+    display: grid;
+    gap: 20px;
+}
+
+.grid {
+    display: grid;
+    gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 22px;
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(16px);
+}
+
+.hero {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    justify-content: space-between;
+}
+
+.eyebrow,
+.status-label,
+.muted,
+.device-header p,
+.tag-card p,
+small,
+summary {
+    color: var(--muted);
+}
+
+h1, h2, h3, p {
+    margin-top: 0;
+}
+
+h1 {
+    margin-bottom: 10px;
+    font-size: clamp(2rem, 3vw, 2.8rem);
+}
+
+.status-panel {
+    display: grid;
+    gap: 12px;
+    min-width: 280px;
+    padding: 16px;
+    border-radius: 18px;
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+}
+
+.stack,
+.settings-grid {
+    display: grid;
+    gap: 14px;
+}
+
+.settings-grid {
+    margin-top: 18px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    align-items: end;
+}
+
+label {
+    display: grid;
+    gap: 8px;
+}
+
+input,
+select,
+button {
+    width: 100%;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    padding: 12px 14px;
+    background: rgba(15, 23, 42, 0.95);
+    color: var(--text);
+    font: inherit;
+}
+
+button {
+    cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), #16a34a);
+    border: none;
+    font-weight: 600;
+}
+
+button.secondary {
+    width: auto;
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+}
+
+button:hover {
+    filter: brightness(1.05);
+}
+
+.section-head,
+.device-header,
+.tag-card {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+}
+
+.device-list,
+.tag-list {
+    display: grid;
+    gap: 16px;
+}
+
+.device-card,
+.tag-card,
+.empty {
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--panel-soft);
+}
+
+.device-card {
+    padding: 18px;
+}
+
+.tag-card {
+    padding: 14px 16px;
+}
+
+.value-box {
+    text-align: right;
+}
+
+.value-box span {
+    display: block;
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.empty {
+    padding: 16px;
+}
+
+pre {
+    overflow-x: auto;
+    padding: 16px;
+    margin: 0;
+    border-radius: 16px;
+    background: rgba(2, 6, 23, 0.95);
+    border: 1px solid var(--border);
+}
+
+details summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.toast-container {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    display: grid;
+    gap: 10px;
+    z-index: 999;
+}
+
+.toast {
+    min-width: 240px;
+    max-width: 360px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: rgba(15, 23, 42, 0.96);
+    box-shadow: var(--shadow);
+    transition: opacity 0.24s ease, transform 0.24s ease;
+}
+
+.toast.success {
+    border-color: rgba(34, 197, 94, 0.35);
+}
+
+.toast.error {
+    border-color: rgba(249, 115, 22, 0.45);
+}
+
+.toast.fade-out {
+    opacity: 0;
+    transform: translateY(8px);
+}
+
+@media (max-width: 820px) {
+    .hero,
+    .section-head,
+    .device-header,
+    .tag-card {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .status-panel {
+        min-width: 0;
+    }
+
+    .value-box {
+        text-align: left;
+    }
+}
