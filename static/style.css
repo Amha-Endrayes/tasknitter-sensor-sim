@@ -142,6 +142,17 @@ button.secondary {
     border: 1px solid var(--border);
 }
 
+#broadcastToggleButton {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: #f8fafc;
+    border: none;
+}
+
+#broadcastToggleButton.is-paused {
+    background: linear-gradient(135deg, #f97316, #ea580c);
+    color: #fff7ed;
+}
+
 button:hover {
     filter: brightness(1.05);
 }

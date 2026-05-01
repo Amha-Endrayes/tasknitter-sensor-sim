@@ -28,6 +28,11 @@
                     <span class="status-label">Publish Interval</span>
                     <strong id="intervalLabel">-</strong>
                 </div>
+                <div>
+                    <span class="status-label">Sensor Broadcast</span>
+                    <strong id="broadcastLabel">-</strong>
+                </div>
+                <button id="broadcastToggleButton" class="secondary" type="button">Pause Broadcast</button>
             </div>
         </section>
 
@@ -116,6 +121,7 @@
         const deviceUrl = "/api/devices";
         const tagUrl = "/api/tags";
         const settingsUrl = "/api/settings";
+        const broadcastUrl = "/api/broadcast";
         let latestState = null;
         let refreshTimer = null;
 
@@ -162,6 +168,10 @@
             document.getElementById("orgIdLabel").textContent = state.settings.org_id;
             document.getElementById("mqttHostLabel").textContent = state.settings.mqtt_host;
             document.getElementById("intervalLabel").textContent = `${state.settings.publish_interval_seconds}s`;
+            document.getElementById("broadcastLabel").textContent = state.broadcast_enabled ? "Running" : "Paused";
+            const broadcastButton = document.getElementById("broadcastToggleButton");
+            broadcastButton.textContent = state.broadcast_enabled ? "Pause Broadcast" : "Resume Broadcast";
+            broadcastButton.classList.toggle("is-paused", !state.broadcast_enabled);
 
             if (!options.preserveForms) {
                 const settingsForm = document.getElementById("settingsForm");
@@ -281,6 +291,13 @@
         document.getElementById("refreshButton").addEventListener("click", async () => {
             await refreshState({ preserveForms: shouldPreserveForms() });
             showToast("State refreshed");
+        });
+
+        document.getElementById("broadcastToggleButton").addEventListener("click", async () => {
+            const nextValue = !(latestState?.broadcast_enabled ?? true);
+            await postJson(broadcastUrl, { broadcast_enabled: nextValue });
+            await refreshState({ preserveForms: shouldPreserveForms() });
+            showToast(nextValue ? "Sensor broadcast resumed" : "Sensor broadcast paused");
         });
 
         refreshState();

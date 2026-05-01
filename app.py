@@ -178,6 +178,7 @@ class AppState:
                 "publish_interval_seconds": DEFAULT_INTERVAL_SECONDS,
                 "theme": "light",
             },
+            "broadcast_enabled": True,
             "devices": [],
             "last_publish": None,
         }
@@ -191,6 +192,7 @@ class AppState:
         loaded = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         default = self._default_state()
         default["settings"].update(loaded.get("settings", {}))
+        default["broadcast_enabled"] = loaded.get("broadcast_enabled", True)
         default["devices"] = loaded.get("devices", [])
         default["last_publish"] = loaded.get("last_publish")
         return default
@@ -289,6 +291,12 @@ class AppState:
             self.save()
             return tag, payload, publish_result
 
+    def set_broadcast_enabled(self, enabled: bool) -> dict[str, Any]:
+        with self._lock:
+            self.state["broadcast_enabled"] = bool(enabled)
+            self.save()
+            return self.snapshot()
+
     def _next_sensor_value(self, tag: dict[str, Any]) -> float:
         profile = SENSOR_PROFILES[tag["sensor_type"]]
         current = float(tag["current_value"])
@@ -327,9 +335,11 @@ class AppState:
     def simulate_forever(self) -> None:
         while True:
             time.sleep(1)
-            interval_ms = self.state["settings"]["publish_interval_seconds"] * 1000
             changed = False
             with self._lock:
+                if not self.state.get("broadcast_enabled", True):
+                    continue
+                interval_ms = self.state["settings"]["publish_interval_seconds"] * 1000
                 for device in self.state["devices"]:
                     for tag in device.get("tags", []):
                         if now_ms() - int(tag.get("last_published_at", 0)) >= interval_ms:
@@ -369,6 +379,13 @@ def update_settings():
         interval_seconds=int(payload.get("publish_interval_seconds", DEFAULT_INTERVAL_SECONDS)),
         theme=payload.get("theme", "light"),
     )
+    return jsonify(snapshot)
+
+
+@app.post("/api/broadcast")
+def update_broadcast():
+    payload = request.get_json(force=True)
+    snapshot = state.set_broadcast_enabled(bool(payload.get("broadcast_enabled", True)))
     return jsonify(snapshot)
 
 
