@@ -260,6 +260,31 @@ class AppState:
             "monitor_schedule_next_start": None,
         }
 
+    def _normalize_state(self, raw_state: dict[str, Any]) -> dict[str, Any]:
+        for device in raw_state.get("devices", []):
+            actual_device_name = (
+                device.get("device_actual_name")
+                or device.get("device_display_name")
+                or device.get("device_name")
+                or device.get("device")
+            )
+            device["device_actual_name"] = actual_device_name
+            device.setdefault("device_display_name", actual_device_name)
+            device.setdefault("tags", [])
+
+            for tag in device.get("tags", []):
+                actual_tag_name = (
+                    tag.get("tag_actual_name")
+                    or tag.get("sensor_display_name")
+                    or tag.get("tag_name")
+                    or tag.get("tag_id")
+                )
+                tag["tag_actual_name"] = actual_tag_name
+                tag.setdefault("sensor_display_name", actual_tag_name)
+                tag.setdefault("last_monitor_task_at", 0)
+                tag.setdefault("last_published_at", 0)
+        return raw_state
+
     def _load_state(self) -> dict[str, Any]:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         if not STATE_FILE.exists():
@@ -273,7 +298,9 @@ class AppState:
         default["devices"] = loaded.get("devices", [])
         default["last_publish"] = loaded.get("last_publish")
         default["monitor_schedule_next_start"] = loaded.get("monitor_schedule_next_start")
-        return default
+        normalized = self._normalize_state(default)
+        STATE_FILE.write_text(json.dumps(normalized, indent=2), encoding="utf-8")
+        return normalized
 
     def save(self) -> None:
         with self._lock:
@@ -335,6 +362,22 @@ class AppState:
             self.save()
         return device, payload, publish_result
 
+    def _device_actual_name(self, device: dict[str, Any]) -> str:
+        return (
+            device.get("device_actual_name")
+            or device.get("device_display_name")
+            or device.get("device_name")
+            or device.get("device")
+        )
+
+    def _tag_actual_name(self, tag: dict[str, Any]) -> str:
+        return (
+            tag.get("tag_actual_name")
+            or tag.get("sensor_display_name")
+            or tag.get("tag_name")
+            or tag.get("tag_id")
+        )
+
     def create_tag(self, device_name: str, sensor_display_name: str, sensor_type: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
         profile = SENSOR_PROFILES[sensor_type]
         timestamp = now_ms()
@@ -368,8 +411,8 @@ class AppState:
                 "tag_name": tag["tag_name"],
                 "timestamp": timestamp,
                 "source": SOURCE_NAME,
-                "device_actual_name": device["device_actual_name"],
-                "tag_actual_name": tag["tag_actual_name"],
+                "device_actual_name": self._device_actual_name(device),
+                "tag_actual_name": self._tag_actual_name(tag),
             }
             topic = f'{self.state["settings"]["org_id"]}/{device["device_name"]}/newTag'
             publish_result = self.publisher.publish(topic, payload)
@@ -413,8 +456,8 @@ class AppState:
             "value": tag["current_value"],
             "timestamp": timestamp,
             "source": SOURCE_NAME,
-            "device_actual_name": device["device_actual_name"],
-            "tag_actual_name": tag["tag_actual_name"],
+            "device_actual_name": self._device_actual_name(device),
+            "tag_actual_name": self._tag_actual_name(tag),
         }
         topic = f'{self.state["settings"]["org_id"]}/{device["device_name"]}/{tag["tag_id"]}'
         publish_result = self.publisher.publish(topic, payload)
@@ -472,8 +515,8 @@ class AppState:
         title = f'{content["title"]} - {severity.upper()} ({value} {profile["unit"]})'
         notes = (
             f'{content["notes"]}'
-            f'<p><strong>Machine:</strong> {device["device_actual_name"]}<br>'
-            f'<strong>Sensor:</strong> {tag["tag_actual_name"]}<br>'
+            f'<p><strong>Machine:</strong> {self._device_actual_name(device)}<br>'
+            f'<strong>Sensor:</strong> {self._tag_actual_name(tag)}<br>'
             f'<strong>Observed value:</strong> {value} {profile["unit"]}<br>'
             f'<strong>Threshold:</strong> {threshold} {profile["unit"]}<br>'
             f'<strong>Severity:</strong> {severity}</p>'
@@ -492,7 +535,7 @@ class AppState:
             "created_by": MONITOR_CREATED_BY,
             "origin": "monitor",
             "metadata": {
-                "machine": device["device_actual_name"],
+                "machine": self._device_actual_name(device),
                 "type": profile["monitor_type"],
                 "value": value,
                 "threshold": threshold,
@@ -541,7 +584,7 @@ class AppState:
             return payload, publish_result, {
                 "device_name": device["device_name"],
                 "tag_id": tag["tag_id"],
-                "tag_actual_name": tag["tag_actual_name"],
+                "tag_actual_name": self._tag_actual_name(tag),
             }
 
     def maybe_publish_monitor_task(self, device: dict[str, Any], tag: dict[str, Any]) -> bool:
@@ -630,6 +673,8 @@ def send_monitor_now():
         payload, publish_result, sensor_info = state.publish_monitor_task_now()
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": f"Failed to generate monitor task: {exc}"}), 500
     return jsonify(
         {
             "payload": payload,
