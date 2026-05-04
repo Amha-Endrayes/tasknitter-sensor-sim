@@ -152,6 +152,12 @@ button.secondary {
     border: 1px solid var(--border);
 }
 
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    filter: none;
+}
+
 #broadcastToggleButton {
     background: linear-gradient(135deg, #22c55e, #16a34a);
     color: #f8fafc;
@@ -200,8 +206,25 @@ button:hover {
     padding: 18px;
 }
 
+.device-card[open] {
+    background: var(--panel-soft);
+}
+
 .tag-card {
     padding: 14px 16px;
+}
+
+.device-card summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+.device-card summary::-webkit-details-marker {
+    display: none;
+}
+
+.device-card .tag-list {
+    margin-top: 14px;
 }
 
 .value-box {

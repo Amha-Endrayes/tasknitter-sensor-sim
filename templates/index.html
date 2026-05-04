@@ -112,6 +112,14 @@
         </section>
 
         <section class="card">
+            <div class="section-head">
+                <h2>Devices & Sensors</h2>
+                <button id="refreshButton" class="secondary" type="button">Refresh</button>
+            </div>
+            <div id="devicesView" class="device-list"></div>
+        </section>
+
+        <section class="card">
             <details>
                 <summary>Developer Guide</summary>
                 <div class="guide-grid">
@@ -130,20 +138,9 @@
                 </div>
                 <h3>Payload Reference</h3>
                 <pre id="developerGuide">Loading…</pre>
+                <h3>Last MQTT Publish</h3>
+                <pre id="lastPublish">No events yet.</pre>
             </details>
-        </section>
-
-        <section class="card">
-            <div class="section-head">
-                <h2>Devices & Sensors</h2>
-                <button id="refreshButton" class="secondary" type="button">Refresh</button>
-            </div>
-            <div id="devicesView" class="device-list"></div>
-        </section>
-
-        <section class="card">
-            <h2>Last MQTT Publish</h2>
-            <pre id="lastPublish">No events yet.</pre>
         </section>
     </main>
 
@@ -257,6 +254,7 @@ Payload:
             const broadcastButton = document.getElementById("broadcastToggleButton");
             broadcastButton.textContent = state.broadcast_enabled ? "Pause Broadcast" : "Resume Broadcast";
             broadcastButton.classList.toggle("is-paused", !state.broadcast_enabled);
+            document.getElementById("sendTaskButton").disabled = !state.broadcast_enabled;
 
             if (!options.preserveForms) {
                 const settingsForm = document.getElementById("settingsForm");
@@ -274,14 +272,14 @@ Payload:
                 devicesView.innerHTML = `<div class="empty">No devices created yet.</div>`;
             } else {
                 devicesView.innerHTML = state.devices.map(device => `
-                    <article class="device-card">
-                        <div class="device-header">
+                    <details class="device-card" ${state.devices.length === 1 ? "open" : ""}>
+                        <summary class="device-header">
                             <div>
                                 <h3>${device.device_actual_name || device.device_display_name}</h3>
                                 <p>${device.device_name}</p>
                             </div>
                             <span>${device.tags.length} sensor(s)</span>
-                        </div>
+                        </summary>
                         <div class="tag-list">
                             ${device.tags.length ? device.tags.map(tag => `
                                 <div class="tag-card">
@@ -296,7 +294,7 @@ Payload:
                                 </div>
                             `).join("") : `<div class="empty">No sensors on this device yet.</div>`}
                         </div>
-                    </article>
+                    </details>
                 `).join("");
             }
 

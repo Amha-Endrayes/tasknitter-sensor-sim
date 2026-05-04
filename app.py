@@ -555,6 +555,8 @@ class AppState:
 
     def publish_monitor_task_now(self) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
         with self._lock:
+            if not self.state.get("broadcast_enabled", True):
+                raise ValueError("Broadcast is paused")
             candidates: list[tuple[dict[str, Any], dict[str, Any], bool, float]] = []
             for device in self.state["devices"]:
                 for tag in device.get("tags", []):
@@ -588,6 +590,8 @@ class AppState:
             }
 
     def maybe_publish_monitor_task(self, device: dict[str, Any], tag: dict[str, Any]) -> bool:
+        if not self.state.get("broadcast_enabled", True):
+            return False
         timestamp = now_ms()
         interval_ms = self.state["settings"]["monitor_interval_minutes"] * 60 * 1000
         if timestamp - int(tag.get("last_monitor_task_at", 0)) < interval_ms:
