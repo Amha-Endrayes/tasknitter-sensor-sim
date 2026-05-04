@@ -100,6 +100,11 @@ h1 {
     border: 1px solid var(--border);
 }
 
+.hero-actions {
+    display: grid;
+    gap: 10px;
+}
+
 .stack,
 .settings-grid {
     display: grid;
@@ -129,6 +134,11 @@ button {
     font: inherit;
 }
 
+input[readonly] {
+    opacity: 0.82;
+    cursor: not-allowed;
+}
+
 button {
     cursor: pointer;
     background: linear-gradient(135deg, var(--accent), #16a34a);
@@ -145,6 +155,12 @@ button.secondary {
 #broadcastToggleButton {
     background: linear-gradient(135deg, #22c55e, #16a34a);
     color: #f8fafc;
+    border: none;
+}
+
+#sendTaskButton {
+    background: linear-gradient(135deg, #f97316, #ea580c);
+    color: #fff7ed;
     border: none;
 }
 
@@ -200,6 +216,17 @@ button:hover {
 
 .empty {
     padding: 16px;
+}
+
+.guide-grid {
+    display: grid;
+    gap: 18px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.guide-list {
+    margin: 0;
+    padding-left: 18px;
 }
 
 pre {

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
@@ -29,10 +29,17 @@
                     <strong id="intervalLabel">-</strong>
                 </div>
                 <div>
+                    <span class="status-label">Task Interval</span>
+                    <strong id="monitorIntervalLabel">-</strong>
+                </div>
+                <div>
                     <span class="status-label">Sensor Broadcast</span>
                     <strong id="broadcastLabel">-</strong>
                 </div>
-                <button id="broadcastToggleButton" class="secondary" type="button">Pause Broadcast</button>
+                <div class="hero-actions">
+                    <button id="sendTaskButton" class="secondary" type="button">Send Task</button>
+                    <button id="broadcastToggleButton" class="secondary" type="button">Pause Broadcast</button>
+                </div>
             </div>
         </section>
 
@@ -77,8 +84,8 @@
                 <summary>Advanced Settings</summary>
                 <form id="settingsForm" class="settings-grid">
                     <label>
-                        <span>Organisation ID</span>
-                        <input type="text" name="org_id" required>
+                        <span>Organisation ID (locked)</span>
+                        <input type="text" name="org_id" readonly>
                     </label>
                     <label>
                         <span>MQTT Host</span>
@@ -95,8 +102,34 @@
                             <option value="dark">Dark</option>
                         </select>
                     </label>
+                    <label>
+                        <span>Task Generation Interval (minutes)</span>
+                        <input type="number" name="monitor_interval_minutes" min="1" required>
+                    </label>
                     <button type="submit">Save Settings</button>
                 </form>
+            </details>
+        </section>
+
+        <section class="card">
+            <details>
+                <summary>Developer Guide</summary>
+                <div class="guide-grid">
+                    <div>
+                        <h3>Broker</h3>
+                        <p class="muted">Address: <code id="brokerAddress">mqtt.tasknitter.com</code></p>
+                    </div>
+                    <div>
+                        <h3>Available Topics</h3>
+                        <ul class="guide-list">
+                            <li><code>&lt;org_id&gt;/newSensorCreated</code></li>
+                            <li><code>&lt;org_id&gt;/&lt;device_name&gt;/newTag</code></li>
+                            <li><code>&lt;org_id&gt;/&lt;device_name&gt;/&lt;tag_id&gt;</code></li>
+                        </ul>
+                    </div>
+                </div>
+                <h3>Payload Reference</h3>
+                <pre id="developerGuide">Loading…</pre>
             </details>
         </section>
 
@@ -122,6 +155,7 @@
         const tagUrl = "/api/tags";
         const settingsUrl = "/api/settings";
         const broadcastUrl = "/api/broadcast";
+        const sendTaskUrl = "/api/monitor/send-now";
         let latestState = null;
         let refreshTimer = null;
 
@@ -162,13 +196,64 @@
             }
         }
 
+        function buildDeveloperGuide(state) {
+            const orgId = state.settings.org_id || "<org_id>";
+            const deviceName = "d_xxxxxxxx-xxxxxxxx";
+            const tagId = "t_xxxxxxxx-xxxxxxxx";
+            const deviceActualName = "Boiler Pump 1";
+            const tagActualName = "Vibration Sensor 1";
+            const exampleTimestamp = 1770000000000;
+            return `Broker: ${state.settings.mqtt_host}
+
+Topic: ${orgId}/newSensorCreated
+Payload:
+{
+  "device": "${deviceName}",
+  "device_name": "${deviceName}",
+  "timestamp": ${exampleTimestamp},
+  "source": "fuxa",
+  "tags": [],
+  "device_actual_name": "${deviceActualName}"
+}
+
+Topic: ${orgId}/${deviceName}/newTag
+Payload:
+{
+  "device": "${deviceName}",
+  "device_name": "${deviceName}",
+  "tag_id": "${tagId}",
+  "tag_name": "${tagId}",
+  "timestamp": ${exampleTimestamp},
+  "source": "fuxa",
+  "device_actual_name": "${deviceActualName}",
+  "tag_actual_name": "${tagActualName}"
+}
+
+Topic: ${orgId}/${deviceName}/${tagId}
+Payload:
+{
+  "device": "${deviceName}",
+  "device_name": "${deviceName}",
+  "tag_id": "${tagId}",
+  "tag_name": "${tagId}",
+  "value": 4.72,
+  "timestamp": ${exampleTimestamp},
+  "source": "fuxa",
+  "device_actual_name": "${deviceActualName}",
+  "tag_actual_name": "${tagActualName}"
+}`;
+        }
+
         function renderState(state, options = {}) {
             latestState = state;
             document.documentElement.dataset.theme = state.settings.theme || "light";
             document.getElementById("orgIdLabel").textContent = state.settings.org_id;
             document.getElementById("mqttHostLabel").textContent = state.settings.mqtt_host;
             document.getElementById("intervalLabel").textContent = `${state.settings.publish_interval_seconds}s`;
+            document.getElementById("monitorIntervalLabel").textContent = `${state.settings.monitor_interval_minutes}m`;
             document.getElementById("broadcastLabel").textContent = state.broadcast_enabled ? "Running" : "Paused";
+            document.getElementById("brokerAddress").textContent = state.settings.mqtt_host;
+            document.getElementById("developerGuide").textContent = buildDeveloperGuide(state);
             const broadcastButton = document.getElementById("broadcastToggleButton");
             broadcastButton.textContent = state.broadcast_enabled ? "Pause Broadcast" : "Resume Broadcast";
             broadcastButton.classList.toggle("is-paused", !state.broadcast_enabled);
@@ -178,6 +263,7 @@
                 settingsForm.org_id.value = state.settings.org_id;
                 settingsForm.mqtt_host.value = state.settings.mqtt_host;
                 settingsForm.publish_interval_seconds.value = state.settings.publish_interval_seconds;
+                settingsForm.monitor_interval_minutes.value = state.settings.monitor_interval_minutes;
                 settingsForm.theme.value = state.settings.theme || "light";
             }
 
@@ -191,7 +277,7 @@
                     <article class="device-card">
                         <div class="device-header">
                             <div>
-                                <h3>${device.device_display_name}</h3>
+                                <h3>${device.device_actual_name || device.device_display_name}</h3>
                                 <p>${device.device_name}</p>
                             </div>
                             <span>${device.tags.length} sensor(s)</span>
@@ -200,7 +286,7 @@
                             ${device.tags.length ? device.tags.map(tag => `
                                 <div class="tag-card">
                                     <div>
-                                        <strong>${tag.sensor_display_name}</strong>
+                                        <strong>${tag.tag_actual_name || tag.sensor_display_name}</strong>
                                         <p>${tag.sensor_type_label} · ${tag.tag_id}</p>
                                     </div>
                                     <div class="value-box">
@@ -282,6 +368,7 @@
                 org_id: form.org_id.value,
                 mqtt_host: form.mqtt_host.value,
                 publish_interval_seconds: Number(form.publish_interval_seconds.value),
+                monitor_interval_minutes: Number(form.monitor_interval_minutes.value),
                 theme: form.theme.value,
             });
             await refreshState();
@@ -300,8 +387,15 @@
             showToast(nextValue ? "Sensor broadcast resumed" : "Sensor broadcast paused");
         });
 
+        document.getElementById("sendTaskButton").addEventListener("click", async () => {
+            const result = await postJson(sendTaskUrl, {});
+            await refreshState({ preserveForms: shouldPreserveForms() });
+            showToast(`Task sent for ${result.sensor.tag_actual_name}`);
+        });
+
         refreshState();
         pollState();
     </script>
 </body>
 </html>
+
