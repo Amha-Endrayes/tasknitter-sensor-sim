@@ -51,24 +51,28 @@ SENSOR_PROFILES = {
         "unit": "°C",
         "min": 18.0,
         "max": 95.0,
-        "initial": (28.0, 42.0),
-        "step": 1.2,
+        "initial": (52.0, 66.0),
+        "step": 2.8,
         "decimals": 2,
-        "monitor_threshold": 65.0,
+        "monitor_threshold": 58.0,
         "monitor_type": "temperature",
         "monitor_direction": "above",
+        "spike_chance": 0.12,
+        "spike_scale": 6.0,
     },
     "humidity": {
         "label": "Humidity",
         "unit": "%",
         "min": 20.0,
         "max": 85.0,
-        "initial": (35.0, 60.0),
-        "step": 2.5,
+        "initial": (52.0, 72.0),
+        "step": 4.0,
         "decimals": 1,
-        "monitor_threshold": 70.0,
+        "monitor_threshold": 62.0,
         "monitor_type": "humidity",
         "monitor_direction": "above",
+        "spike_chance": 0.10,
+        "spike_scale": 7.0,
     },
     "vibration": {
         "label": "Vibration",
@@ -99,12 +103,14 @@ SENSOR_PROFILES = {
         "unit": "bar",
         "min": 0.8,
         "max": 12.0,
-        "initial": (2.0, 4.5),
-        "step": 0.25,
+        "initial": (6.5, 8.8),
+        "step": 0.45,
         "decimals": 2,
-        "monitor_threshold": 8.5,
+        "monitor_threshold": 7.2,
         "monitor_type": "pressure",
         "monitor_direction": "above",
+        "spike_chance": 0.10,
+        "spike_scale": 1.2,
     },
 }
 
@@ -189,6 +195,16 @@ def weighted_choice(weighted_items: list[tuple[str, float]]) -> str:
     return weighted_items[0][0]
 
 
+def default_monitor_rules() -> dict[str, dict[str, Any]]:
+    return {
+        sensor_type: {
+            "threshold": profile["monitor_threshold"],
+            "interval_minutes": DEFAULT_MONITOR_INTERVAL_MINUTES,
+        }
+        for sensor_type, profile in SENSOR_PROFILES.items()
+    }
+
+
 class MqttPublisher:
     def __init__(self, host: str) -> None:
         self.host = host
@@ -252,6 +268,7 @@ class AppState:
                 "mqtt_host": DEFAULT_MQTT_HOST,
                 "publish_interval_seconds": DEFAULT_INTERVAL_SECONDS,
                 "monitor_interval_minutes": DEFAULT_MONITOR_INTERVAL_MINUTES,
+                "monitor_rules": default_monitor_rules(),
                 "theme": DEFAULT_THEME,
             },
             "broadcast_enabled": True,
@@ -261,6 +278,17 @@ class AppState:
         }
 
     def _normalize_state(self, raw_state: dict[str, Any]) -> dict[str, Any]:
+        settings = raw_state.setdefault("settings", {})
+        fallback_interval = max(1, int(settings.get("monitor_interval_minutes", DEFAULT_MONITOR_INTERVAL_MINUTES)))
+        current_rules = settings.get("monitor_rules") or {}
+        normalized_rules = default_monitor_rules()
+        for sensor_type, rule in normalized_rules.items():
+            existing = current_rules.get(sensor_type, {})
+            rule["threshold"] = float(existing.get("threshold", rule["threshold"]))
+            rule["interval_minutes"] = max(1, int(existing.get("interval_minutes", fallback_interval)))
+        settings["monitor_rules"] = normalized_rules
+        settings["monitor_interval_minutes"] = fallback_interval
+
         for device in raw_state.get("devices", []):
             actual_device_name = (
                 device.get("device_actual_name")
@@ -317,16 +345,34 @@ class AppState:
         interval_seconds: int,
         theme: str,
         monitor_interval_minutes: int,
+        monitor_rules: dict[str, dict[str, Any]],
     ) -> dict[str, Any]:
         with self._lock:
             self.state["settings"]["org_id"] = org_id.strip() or DEFAULT_ORG_ID
             self.state["settings"]["mqtt_host"] = mqtt_host.strip() or DEFAULT_MQTT_HOST
             self.state["settings"]["publish_interval_seconds"] = max(1, interval_seconds)
-            self.state["settings"]["monitor_interval_minutes"] = max(1, monitor_interval_minutes)
+            fallback_interval = max(1, monitor_interval_minutes)
+            self.state["settings"]["monitor_interval_minutes"] = fallback_interval
+            normalized_rules = default_monitor_rules()
+            for sensor_type, rule in normalized_rules.items():
+                incoming = monitor_rules.get(sensor_type, {})
+                rule["threshold"] = float(incoming.get("threshold", rule["threshold"]))
+                rule["interval_minutes"] = max(1, int(incoming.get("interval_minutes", fallback_interval)))
+            self.state["settings"]["monitor_rules"] = normalized_rules
             self.state["settings"]["theme"] = theme if theme in {"light", "dark"} else DEFAULT_THEME
             self.publisher.set_host(self.state["settings"]["mqtt_host"])
             self.save()
             return self.snapshot()
+
+    def _monitor_rule(self, sensor_type: str) -> dict[str, Any]:
+        settings = self.state.get("settings", {})
+        rules = settings.get("monitor_rules", {})
+        base = default_monitor_rules()[sensor_type]
+        incoming = rules.get(sensor_type, {})
+        return {
+            "threshold": float(incoming.get("threshold", base["threshold"])),
+            "interval_minutes": max(1, int(incoming.get("interval_minutes", settings.get("monitor_interval_minutes", DEFAULT_MONITOR_INTERVAL_MINUTES)))),
+        }
 
     def create_device(self, device_display_name: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
         timestamp = now_ms()
@@ -438,10 +484,14 @@ class AppState:
         drift = random.uniform(-profile["step"], profile["step"])
         midpoint = (profile["min"] + profile["max"]) / 2
         mean_reversion = (midpoint - current) * 0.04
+        spike = 0.0
+        if random.random() < profile.get("spike_chance", 0.0):
+            direction = -1 if profile.get("monitor_direction") == "below" else 1
+            spike = random.uniform(0, profile.get("spike_scale", 0.0)) * direction
         if tag["sensor_type"] == "battery":
             drift = random.uniform(-0.6, 0.1)
             mean_reversion = (85 - current) * 0.02
-        next_value = clamp(current + drift + mean_reversion, profile["min"], profile["max"])
+        next_value = clamp(current + drift + mean_reversion + spike, profile["min"], profile["max"])
         return round(next_value, profile["decimals"])
 
     def publish_tag_value(self, device: dict[str, Any], tag: dict[str, Any]) -> None:
@@ -470,14 +520,14 @@ class AppState:
 
     def _monitor_threshold_triggered(self, tag: dict[str, Any]) -> bool:
         profile = SENSOR_PROFILES[tag["sensor_type"]]
-        threshold = float(profile["monitor_threshold"])
+        threshold = float(self._monitor_rule(tag["sensor_type"])["threshold"])
         direction = profile.get("monitor_direction", "above")
         value = float(tag["current_value"])
         return value <= threshold if direction == "below" else value >= threshold
 
     def _monitor_severity(self, tag: dict[str, Any]) -> str:
         profile = SENSOR_PROFILES[tag["sensor_type"]]
-        threshold = float(profile["monitor_threshold"])
+        threshold = float(self._monitor_rule(tag["sensor_type"])["threshold"])
         value = float(tag["current_value"])
         direction = profile.get("monitor_direction", "above")
         if direction == "below":
@@ -507,10 +557,11 @@ class AppState:
 
     def _build_monitor_payload(self, device: dict[str, Any], tag: dict[str, Any]) -> dict[str, Any]:
         profile = SENSOR_PROFILES[tag["sensor_type"]]
+        monitor_rule = self._monitor_rule(tag["sensor_type"])
         content = random.choice(MONITOR_CONTENT[tag["sensor_type"]])
         severity = self._monitor_severity(tag)
         value = round(float(tag["current_value"]), profile["decimals"])
-        threshold = profile["monitor_threshold"]
+        threshold = monitor_rule["threshold"]
         start, end = self._next_monitor_window()
         title = f'{content["title"]} - {severity.upper()} ({value} {profile["unit"]})'
         notes = (
@@ -546,7 +597,7 @@ class AppState:
 
     def _monitor_deviation_score(self, tag: dict[str, Any]) -> float:
         profile = SENSOR_PROFILES[tag["sensor_type"]]
-        threshold = float(profile["monitor_threshold"])
+        threshold = float(self._monitor_rule(tag["sensor_type"])["threshold"])
         value = float(tag["current_value"])
         direction = profile.get("monitor_direction", "above")
         if direction == "below":
@@ -593,7 +644,7 @@ class AppState:
         if not self.state.get("broadcast_enabled", True):
             return False
         timestamp = now_ms()
-        interval_ms = self.state["settings"]["monitor_interval_minutes"] * 60 * 1000
+        interval_ms = self._monitor_rule(tag["sensor_type"])["interval_minutes"] * 60 * 1000
         if timestamp - int(tag.get("last_monitor_task_at", 0)) < interval_ms:
             return False
         if not self._monitor_threshold_triggered(tag):
@@ -654,12 +705,21 @@ def get_state():
 @app.post("/api/settings")
 def update_settings():
     payload = request.get_json(force=True)
+    raw_rules = payload.get("monitor_rules", {}) or {}
+    monitor_rules = {}
+    for sensor_type in SENSOR_PROFILES:
+        incoming = raw_rules.get(sensor_type, {})
+        monitor_rules[sensor_type] = {
+            "threshold": incoming.get("threshold", SENSOR_PROFILES[sensor_type]["monitor_threshold"]),
+            "interval_minutes": incoming.get("interval_minutes", payload.get("monitor_interval_minutes", DEFAULT_MONITOR_INTERVAL_MINUTES)),
+        }
     snapshot = state.update_settings(
         org_id=payload.get("org_id", DEFAULT_ORG_ID),
         mqtt_host=payload.get("mqtt_host", DEFAULT_MQTT_HOST),
         interval_seconds=int(payload.get("publish_interval_seconds", DEFAULT_INTERVAL_SECONDS)),
         theme=payload.get("theme", DEFAULT_THEME),
         monitor_interval_minutes=int(payload.get("monitor_interval_minutes", DEFAULT_MONITOR_INTERVAL_MINUTES)),
+        monitor_rules=monitor_rules,
     )
     return jsonify(snapshot)
 

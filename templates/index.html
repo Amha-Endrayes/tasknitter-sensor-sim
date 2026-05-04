@@ -29,7 +29,7 @@
                     <strong id="intervalLabel">-</strong>
                 </div>
                 <div>
-                    <span class="status-label">Task Interval</span>
+                    <span class="status-label">Default Task Interval</span>
                     <strong id="monitorIntervalLabel">-</strong>
                 </div>
                 <div>
@@ -103,9 +103,34 @@
                         </select>
                     </label>
                     <label>
-                        <span>Task Generation Interval (minutes)</span>
+                        <span>Default Task Generation Interval (minutes)</span>
                         <input type="number" name="monitor_interval_minutes" min="1" required>
                     </label>
+                    <div class="monitor-rules" id="monitorRules">
+                        {% for sensor_type, config in sensor_profiles.items() %}
+                        <fieldset class="monitor-rule-card">
+                            <legend>{{ config.label }}</legend>
+                            <label>
+                                <span>Threshold ({{ config.unit }})</span>
+                                <input
+                                    type="number"
+                                    name="monitor_threshold_{{ sensor_type }}"
+                                    step="0.01"
+                                    required
+                                >
+                            </label>
+                            <label>
+                                <span>Interval (minutes)</span>
+                                <input
+                                    type="number"
+                                    name="monitor_interval_{{ sensor_type }}"
+                                    min="1"
+                                    required
+                                >
+                            </label>
+                        </fieldset>
+                        {% endfor %}
+                    </div>
                     <button type="submit">Save Settings</button>
                 </form>
             </details>
@@ -153,6 +178,7 @@
         const settingsUrl = "/api/settings";
         const broadcastUrl = "/api/broadcast";
         const sendTaskUrl = "/api/monitor/send-now";
+        const sensorTypes = {{ sensor_profiles.keys() | list | tojson }};
         let latestState = null;
         let refreshTimer = null;
 
@@ -241,6 +267,32 @@ Payload:
 }`;
         }
 
+        function applyMonitorRuleInputs(settingsForm, state) {
+            const monitorRules = state.settings.monitor_rules || {};
+            for (const sensorType of sensorTypes) {
+                const rule = monitorRules[sensorType] || {};
+                const thresholdInput = settingsForm[`monitor_threshold_${sensorType}`];
+                const intervalInput = settingsForm[`monitor_interval_${sensorType}`];
+                if (thresholdInput) {
+                    thresholdInput.value = rule.threshold ?? "";
+                }
+                if (intervalInput) {
+                    intervalInput.value = rule.interval_minutes ?? state.settings.monitor_interval_minutes;
+                }
+            }
+        }
+
+        function collectMonitorRules(settingsForm) {
+            const monitorRules = {};
+            for (const sensorType of sensorTypes) {
+                monitorRules[sensorType] = {
+                    threshold: Number(settingsForm[`monitor_threshold_${sensorType}`].value),
+                    interval_minutes: Number(settingsForm[`monitor_interval_${sensorType}`].value),
+                };
+            }
+            return monitorRules;
+        }
+
         function renderState(state, options = {}) {
             latestState = state;
             document.documentElement.dataset.theme = state.settings.theme || "light";
@@ -263,6 +315,7 @@ Payload:
                 settingsForm.publish_interval_seconds.value = state.settings.publish_interval_seconds;
                 settingsForm.monitor_interval_minutes.value = state.settings.monitor_interval_minutes;
                 settingsForm.theme.value = state.settings.theme || "light";
+                applyMonitorRuleInputs(settingsForm, state);
             }
 
             syncDeviceSelect(state.devices);
@@ -367,6 +420,7 @@ Payload:
                 mqtt_host: form.mqtt_host.value,
                 publish_interval_seconds: Number(form.publish_interval_seconds.value),
                 monitor_interval_minutes: Number(form.monitor_interval_minutes.value),
+                monitor_rules: collectMonitorRules(form),
                 theme: form.theme.value,
             });
             await refreshState();
